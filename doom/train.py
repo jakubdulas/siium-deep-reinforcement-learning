@@ -5,6 +5,7 @@ import os
 import random
 from collections import deque
 from time import sleep, time
+import matplotlib.pyplot as plt
 
 import numpy as np
 import skimage.transform
@@ -30,19 +31,19 @@ test_episodes_per_epoch = 100
 
 # Other parameters
 frame_repeat = 12
-resolution = (100, 100)
+resolution = (300, 300)
 episodes_to_watch = 10
-doom_skill = 1
+doom_skill = 5
 
 model_savefile = "./actor-critic.pth"
-save_model = True
-load_model = False
+save_model = False
+load_model = True
 skip_learning = True
 
 # Configuration file path
 # config_file_path = os.path.join(vzd.scenarios_path, "deathmatch.cfg")
 # config_file_path = os.path.join(vzd.scenarios_path, "basic.cfg")
-config_file_path =  "config.cfg"
+config_file_path =  "basic_config.cfg"
 
 # Uses GPU if available
 if torch.cuda.is_available():
@@ -50,6 +51,33 @@ if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
 else:
     DEVICE = torch.device("cpu")
+
+
+def get_game_variables_for_reward(game):
+    kills = game.get_game_variable(vzd.GameVariable.KILLCOUNT)
+    damage_taken = game.get_game_variable(vzd.GameVariable.DAMAGE_TAKEN)
+    damage_count = game.get_game_variable(vzd.GameVariable.DAMAGECOUNT)
+    armor = game.get_game_variable(vzd.GameVariable.ARMOR)
+    return kills, damage_taken, damage_count, armor
+
+def get_reward(game, prev_kills, prev_damage_taken, prev_damage_count, prev_armor):
+    reward = 0
+    if game.is_player_dead():
+        reward -= 50
+    else:
+        reward -= 2
+
+    did_kill = (game.get_game_variable(vzd.GameVariable.KILLCOUNT)-prev_kills) > 0
+    was_damage_taken = (game.get_game_variable(vzd.GameVariable.DAMAGE_TAKEN)-prev_damage_taken) > 0
+    did_damage = (game.get_game_variable(vzd.GameVariable.DAMAGECOUNT)-prev_damage_count) > 0
+    did_get_armor = (game.get_game_variable(vzd.GameVariable.ARMOR)-prev_armor) > 0
+
+
+    reward += did_kill * 10
+    reward -= was_damage_taken * 0.5 
+    reward += did_damage * 2
+    reward += did_get_armor * 3  
+    return reward
 
 
 def display_buffers(state):
@@ -131,18 +159,23 @@ def run(game, agent, actions, num_epochs, frame_repeat, steps_per_epoch=2000):
     """
 
     start_time = time()
+    train_scores = []
 
     for epoch in range(num_epochs):
         game.new_episode()
-        train_scores = []
+        train_episode_scores = []
         global_step = 0
         print(f"\nEpoch #{epoch + 1}")
+        current_episode_score = 0
 
         for _ in trange(steps_per_epoch, leave=False):
             state = game.get_state()
             action = agent.get_action(state)
+            prev_game_variables = get_game_variables_for_reward(game)
             reward = game.make_action(actions[action], frame_repeat)
             done = game.is_episode_finished()
+            reward = get_reward(game, *prev_game_variables)
+            current_episode_score += reward
 
             next_state = game.get_state()
             agent.append_memory(state, action, reward, next_state, done)
@@ -151,26 +184,29 @@ def run(game, agent, actions, num_epochs, frame_repeat, steps_per_epoch=2000):
                 agent.train()
 
             if done:
-                train_scores.append(game.get_total_reward())
+                train_episode_scores.append(current_episode_score)
+                current_episode_score = 0
                 game.new_episode()
 
             global_step += 1
 
-        train_scores = np.array(train_scores)
+        train_episode_scores = np.array(train_episode_scores)
 
         print(
             "Results: mean: {:.1f} +/- {:.1f},".format(
-                train_scores.mean(), train_scores.std()
+                train_episode_scores.mean(), train_episode_scores.std()
             ),
-            "min: %.1f," % train_scores.min(),
-            "max: %.1f," % train_scores.max(),
+            "min: %.1f," % train_episode_scores.min(),
+            "max: %.1f," % train_episode_scores.max(),
         )
 
         test(game, agent)
+        train_scores.append(train_episode_scores.mean())
         if save_model:
             print("Saving the network weights to:", model_savefile)
             torch.save(agent.actor_net.state_dict(), model_savefile)
         print("Total elapsed time: %.2f minutes" % ((time() - start_time) / 60.0))
+
 
         increase_doom_skill()
 
@@ -182,7 +218,19 @@ class ActorCriticNet(nn.Module):
     def __init__(self, input_shape, num_actions):
         super(ActorCriticNet, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(input_shape[0], 32, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.Conv2d(input_shape[0], 16, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d((2, 2), 2),
+            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.MaxPool2d((2, 2), 2),
+            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d((2, 2), 2),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.MaxPool2d((2, 2), 2),
@@ -194,19 +242,15 @@ class ActorCriticNet(nn.Module):
             nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d((2, 2), 2),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d((2, 2), 2),
         )
         self.fc1 = nn.Sequential(
-            nn.Linear(5, 32),
+            nn.Linear(5, 128),
             nn.ReLU(),
-            nn.Linear(32, 64),
+            nn.Linear(128, 32),
             nn.ReLU(),
         )
         self.fc2 = nn.Sequential(
-            nn.Linear(2304+64, 256),
+            nn.Linear(1056, 256),
             nn.ReLU(),
         )
         self.actor = nn.Linear(256, num_actions)
@@ -240,18 +284,22 @@ class ActorCriticAgent:
     def preprocess(self, state):
         """Down samples image to resolution"""
         if state is None:
-            return np.zeros((3, *resolution)), np.zeros(5)
+            return np.zeros((2, *resolution)), np.zeros(5)
 
         visual_data = np.stack([
             state.depth_buffer,
             state.labels_buffer,
-            state.automap_buffer
+            # state.automap_buffer
         ], axis=-1)
         visual_data = skimage.transform.resize(visual_data, resolution)
         visual_data = visual_data.astype(np.float32)
         visual_data = np.transpose(visual_data, [2, 0, 1])
+        print(np.max(visual_data))
+
         # img = np.expand_dims(img, axis=0)
-        numerical_data = state.game_variables/100
+        numerical_data = np.array(state.game_variables)/100
+        numerical_data = np.clip(numerical_data, 0, 1)
+    
         return visual_data, numerical_data
 
     def get_action(self, state):
@@ -332,7 +380,7 @@ if __name__ == "__main__":
 
     # Initialize our agent with the set parameters
     agent = ActorCriticAgent(
-        input_shape=(3, *resolution),
+        input_shape=(2, *resolution),
         action_size=len(actions),
         lr=learning_rate,
         gamma=discount_factor,
@@ -356,9 +404,7 @@ if __name__ == "__main__":
     # Reinitialize the game with window visible
     game.close()
     game.set_window_visible(True)
-
     game.set_labels_buffer_enabled(True)
-
     game.set_mode(vzd.Mode.ASYNC_PLAYER)
     game.init()
 
