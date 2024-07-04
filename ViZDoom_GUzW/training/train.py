@@ -6,7 +6,7 @@ import vizdoom as vzd
 from agent_example import Agent, update_config
 from utils import display_buffers
 
-train = False
+train = True
 
 parser = ArgumentParser("ViZDoom training on deathmatch map.")
 parser.add_argument("-m", "--map", default="map01", help="Use map01 or map03.")

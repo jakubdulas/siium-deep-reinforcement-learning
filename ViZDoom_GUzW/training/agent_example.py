@@ -283,7 +283,7 @@ class Agent:
             self.actor_net.eval()
             logits, _ = self.actor_net(*state)
 
-        print(logits.max(), logits.min())
+        # print(logits.max(), logits.min())
         probs = torch.log_softmax(logits[0], dim=-1)
         action = torch.multinomial(probs.exp(), 1).item()
         return self.actions[action], action
