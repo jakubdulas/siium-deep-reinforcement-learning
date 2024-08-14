@@ -221,9 +221,9 @@ class Agent:
         self.optimizer = optim.Adam(self.actor_net.parameters(), lr=lr)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=5, factor=0.5)
 
-        if load_model:
-            print("Loading model from: ", model_savefile)
-            self.actor_net.load_state_dict(torch.load(model_savefile, map_location=torch.device('cpu')))
+        # if load_model:
+        #     print("Loading model from: ", model_savefile)
+        #     self.actor_net.load_state_dict(torch.load(model_savefile, map_location=torch.device('cpu')))
 
         self.memory = deque(maxlen=replay_memory_size)
         self.actor_net.apply(self.init_weights)

@@ -8,20 +8,21 @@ from time import time
 import numpy as np
 import vizdoom as vzd
 
-from agent_example import Agent
+from agent_example import Agent, update_config
 
 parser = ArgumentParser("ViZDoom training on deathmatch map.")
 parser.add_argument("-c", "--colorset", type=int, default=0)
-parser.add_argument("-n", "--playername", default="Janusz", help="Name of a player.")
+parser.add_argument("-n", "--playername", default="Kuba", help="Name of a player.")
 args = parser.parse_args()
 colorset = args.colorset
 playername = args.playername
 
 game = vzd.DoomGame()
 game.load_config("scenarios/deathmatch.cfg")
+update_config(game)
 
 game.add_game_args(
-    "-join 127.0.0.1 -port 5029 "
+    "-join 10.128.126.195 -port 5029 "
     "+viz_connect_timeout 5 "
 )
 
