@@ -1,6 +1,6 @@
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3 import PPO
-from train2 import VizDoomGym, CustomActorCriticPolicy, CustomCNN
+from ViZDoom_GUzW.training.train import VizDoomGym, CustomActorCriticPolicy, CustomCNN
 
 env = VizDoomGym(config="scenarios/deathmatch.cfg", render=True)
 
