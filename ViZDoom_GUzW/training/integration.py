@@ -15,9 +15,9 @@ class Agent:
         if game_state.screen_buffer is not None:
             screen = game_state.screen_buffer
             resize = cv2.resize(
-                np.moveaxis(screen, 0, -1), (160, 100), interpolation=cv2.INTER_CUBIC
+                screen, (160, 100), interpolation=cv2.INTER_CUBIC
             )
-            state = np.reshape(resize, (100, 160, 3))
+            state = np.repeat(resize, 3, axis=2)
             pred,  = self.agent.predict(state, deterministic=True)
 
         return self.actions[pred], pred
