@@ -1,6 +1,6 @@
-''' Client (player) connects to the host using the -join parameter.
+""" Client (player) connects to the host using the -join parameter.
 When all players are connected, client will start playing the game.
-'''
+"""
 
 from argparse import ArgumentParser
 from time import time
@@ -8,7 +8,7 @@ from time import time
 import numpy as np
 import vizdoom as vzd
 
-from agent_example import Agent, update_config
+from agent_example import Agent
 
 parser = ArgumentParser("ViZDoom training on deathmatch map.")
 parser.add_argument("-c", "--colorset", type=int, default=0)
@@ -19,12 +19,9 @@ playername = args.playername
 
 game = vzd.DoomGame()
 game.load_config("scenarios/deathmatch.cfg")
-update_config(game)
+# update_config(game)
 
-game.add_game_args(
-    "-join 10.128.126.195 -port 5029 "
-    "+viz_connect_timeout 5 "
-)
+game.add_game_args("-join 10.24.224.102 -port 5029 " "+viz_connect_timeout 30 ")
 
 game.add_game_args(f"+name {playername} +colorset {colorset}")
 game.set_mode(vzd.Mode.PLAYER)
@@ -47,16 +44,16 @@ while not game.is_episode_finished():
         break
 
     game_state = game.get_state()
-    
+
     # Record duration of choosing an action
     t1 = time()
 
     # Choosing an action
     action, action_index = agent.choose_action(game_state)
-    
+
     if iterations % duration_print_iters == 0:
         print(f"Choosing action duration: {time() - t1:.1f} s")
-    
+
     game.make_action(action)
 
     frags = game.get_game_variable(vzd.GameVariable.FRAGCOUNT)
